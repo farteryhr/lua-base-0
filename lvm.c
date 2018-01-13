@@ -1192,7 +1192,7 @@ void luaV_execute (lua_State *L) {
           lua_Integer step = ivalue(ra + 2);
           lua_Integer idx = intop(+, ivalue(ra), step); /* increment index */
           lua_Integer limit = ivalue(ra + 1);
-          if ((0 < step) ? (idx <= limit) : (limit <= idx)) {
+          if ((0 < step) ? (idx < limit) : (limit < idx)) {
             ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */
             chgivalue(ra, idx);  /* update internal index... */
             setivalue(ra + 3, idx);  /* ...and external index */
@@ -1202,8 +1202,8 @@ void luaV_execute (lua_State *L) {
           lua_Number step = fltvalue(ra + 2);
           lua_Number idx = luai_numadd(L, fltvalue(ra), step); /* inc. index */
           lua_Number limit = fltvalue(ra + 1);
-          if (luai_numlt(0, step) ? luai_numle(idx, limit)
-                                  : luai_numle(limit, idx)) {
+          if (luai_numlt(0, step) ? luai_numlt(idx, limit)
+                                  : luai_numlt(limit, idx)) {
             ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */
             chgfltvalue(ra, idx);  /* update internal index... */
             setfltvalue(ra + 3, idx);  /* ...and external index */
