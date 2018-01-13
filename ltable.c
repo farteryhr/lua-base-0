@@ -140,14 +140,16 @@ static Node *mainposition (const Table *t, const TValue *key) {
 /*
 ** returns the index for 'key' if 'key' is an appropriate key to live in
 ** the array part of the table, 0 otherwise.
+** base 0 mod:
+** returns MAXASIZE otherwise.
 */
 static unsigned int arrayindex (const TValue *key) {
   if (ttisinteger(key)) {
     lua_Integer k = ivalue(key);
-    if (0 < k && (lua_Unsigned)k <= MAXASIZE)
+    if ((lua_Unsigned)k < MAXASIZE)
       return cast(unsigned int, k);  /* 'key' is an appropriate array index */
   }
-  return 0;  /* 'key' did not match some condition */
+  return MAXASIZE;  /* 'key' did not match some condition */
 }
 
 
@@ -160,8 +162,8 @@ static unsigned int findindex (lua_State *L, Table *t, StkId key) {
   unsigned int i;
   if (ttisnil(key)) return 0;  /* first iteration */
   i = arrayindex(key);
-  if (i != 0 && i <= t->sizearray)  /* is 'key' inside array part? */
-    return i;  /* yes; that's the index */
+  if (i < t->sizearray)  /* is 'key' inside array part? */
+    return i + 1;  /* yes; that's the index */
   else {
     int nx;
     Node *n = mainposition(t, key);
@@ -187,7 +189,7 @@ int luaH_next (lua_State *L, Table *t, StkId key) {
   unsigned int i = findindex(L, t, key);  /* find original element */
   for (; i < t->sizearray; i++) {  /* try first array part */
     if (!ttisnil(&t->array[i])) {  /* a non-nil value? */
-      setivalue(key, i + 1);
+      setivalue(key, i);
       setobj2s(L, key+1, &t->array[i]);
       return 1;
     }
@@ -215,6 +217,8 @@ int luaH_next (lua_State *L, Table *t, StkId key) {
 ** between 2^(i - 1) + 1 and 2^i. 'pna' enters with the total number of
 ** integer keys in the table and leaves with the number of keys that
 ** will go to the array part; return the optimal size.
+** base 0 mod:
+** between 2^(i - 1) and 2^i - 1, assuming 2^(-1) == 0
 */
 static unsigned int computesizes (unsigned int nums[], unsigned int *pna) {
   int i;
@@ -240,8 +244,8 @@ static unsigned int computesizes (unsigned int nums[], unsigned int *pna) {
 
 static int countint (const TValue *key, unsigned int *nums) {
   unsigned int k = arrayindex(key);
-  if (k != 0) {  /* is 'key' an appropriate array index? */
-    nums[luaO_ceillog2(k)]++;  /* count as such */
+  if (k < MAXASIZE) {  /* is 'key' an appropriate array index? */
+    nums[luaO_ceillog2(k+1)]++;  /* count as such */
     return 1;
   }
   else
@@ -258,19 +262,19 @@ static unsigned int numusearray (const Table *t, unsigned int *nums) {
   int lg;
   unsigned int ttlg;  /* 2^lg */
   unsigned int ause = 0;  /* summation of 'nums' */
-  unsigned int i = 1;  /* count to traverse all array keys */
+  unsigned int i = 0;  /* count to traverse all array keys */
   /* traverse each slice */
   for (lg = 0, ttlg = 1; lg <= MAXABITS; lg++, ttlg *= 2) {
     unsigned int lc = 0;  /* counter */
     unsigned int lim = ttlg;
     if (lim > t->sizearray) {
       lim = t->sizearray;  /* adjust upper limit */
-      if (i > lim)
+      if (i >= lim)
         break;  /* no more elements to count */
     }
     /* count elements in range (2^(lg - 1), 2^lg] */
-    for (; i <= lim; i++) {
-      if (!ttisnil(&t->array[i-1]))
+    for (; i < lim; i++) {
+      if (!ttisnil(&t->array[i]))
         lc++;
     }
     nums[lg] += lc;
@@ -346,7 +350,7 @@ void luaH_resize (lua_State *L, Table *t, unsigned int nasize,
     /* re-insert elements from vanishing slice */
     for (i=nasize; i<oldasize; i++) {
       if (!ttisnil(&t->array[i]))
-        luaH_setint(L, t, i + 1, &t->array[i]);
+        luaH_setint(L, t, i, &t->array[i]);
     }
     /* shrink array */
     luaM_reallocvector(L, t->array, oldasize, nasize, TValue);
@@ -372,6 +376,9 @@ void luaH_resizearray (lua_State *L, Table *t, unsigned int nasize) {
 
 /*
 ** nums[i] = number of keys 'k' where 2^(i - 1) < k <= 2^i
+** base 0 mod:
+** nums[i] = number of keys 'k' where 2^(i - 1) <= k < 2^i,
+** assuming 2^(-1) == 0
 */
 static void rehash (lua_State *L, Table *t, const TValue *ek) {
   unsigned int asize;  /* optimal size for array part */
@@ -495,9 +502,12 @@ TValue *luaH_newkey (lua_State *L, Table *t, const TValue *key) {
 ** search function for integers
 */
 const TValue *luaH_getint (Table *t, lua_Integer key) {
-  /* (1 <= key && key <= t->sizearray) */
-  if (l_castS2U(key) - 1 < t->sizearray)
-    return &t->array[key - 1];
+  /* (1 <= key && key <= t->sizearray)
+  ** base 0 mod:
+  ** (0 <= key && key < t->sizearray)
+  */
+  if (l_castS2U(key) < t->sizearray)
+    return &t->array[key];
   else {
     Node *n = hashint(t, key);
     for (;;) {  /* check whether 'key' is somewhere in the chain */
@@ -611,24 +621,29 @@ void luaH_setint (lua_State *L, Table *t, lua_Integer key, TValue *value) {
 
 
 static int unbound_search (Table *t, unsigned int j) {
-  unsigned int i = j;  /* i is zero or a present index */
+  /* i is zero or a present index 
+  ** base 0 mod:
+  ** i is zero or (a present index) + 1
+  */
+  unsigned int i = j;
   j++;
   /* find 'i' and 'j' such that i is present and j is not */
   while (!ttisnil(luaH_getint(t, j))) {
     i = j;
     if (j > cast(unsigned int, MAX_INT)/2) {  /* overflow? */
       /* table was built with bad purposes: resort to linear search */
-      i = 1;
+      /* base 0 mod: shit */
+      i = 0;
       while (!ttisnil(luaH_getint(t, i))) i++;
-      return i - 1;
+      return i;
     }
     j *= 2;
   }
   /* now do a binary search between them */
-  while (j - i > 1) {
+  while (j - i >= 1) {
     unsigned int m = (i+j)/2;
     if (ttisnil(luaH_getint(t, m))) j = m;
-    else i = m;
+    else i = m + 1;
   }
   return i;
 }
@@ -637,23 +652,25 @@ static int unbound_search (Table *t, unsigned int j) {
 /*
 ** Try to find a boundary in table 't'. A 'boundary' is an integer index
 ** such that t[i] is non-nil and t[i+1] is nil (and 0 if t[1] is nil).
+** base 0 mod:
+** such that t[i-1] is non-nil and t[i] is nil (and 0 if t[0] is nil).
 */
 int luaH_getn (Table *t) {
   unsigned int j = t->sizearray;
   if (j > 0 && ttisnil(&t->array[j - 1])) {
     /* there is a boundary in the array part: (binary) search for it */
     unsigned int i = 0;
-    while (j - i > 1) {
+    while (j - i >= 1) {
       unsigned int m = (i+j)/2;
-      if (ttisnil(&t->array[m - 1])) j = m;
-      else i = m;
+      if (ttisnil(&t->array[m])) j = m;
+      else i = m + 1;
     }
     return i;
   }
   /* else must find a boundary in hash part */
   else if (isdummy(t))  /* hash part is empty? */
     return j;  /* that is easy... */
-  else return unbound_search(t, j);
+  else return unbound_search(t, j); /* now j == 0 or t->array[t->sizearray-1] is not nil */
 }
 
 

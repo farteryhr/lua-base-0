@@ -1272,11 +1272,12 @@ void luaV_execute (lua_State *L) {
         }
         h = hvalue(ra);
         last = ((c-1)*LFIELDS_PER_FLUSH) + n;
+        /* base 0 mod: will this cause O(n^2) time spent on resizing? */
         if (last > h->sizearray)  /* needs more space? */
           luaH_resizearray(L, h, last);  /* preallocate it at once */
         for (; n > 0; n--) {
           TValue *val = ra+n;
-          luaH_setint(L, h, last--, val);
+          luaH_setint(L, h, --last, val);
           luaC_barrierback(L, h, val);
         }
         L->top = ci->top;  /* correct top (in case of previous open call) */
