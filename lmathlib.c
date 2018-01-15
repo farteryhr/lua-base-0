@@ -246,6 +246,7 @@ static int math_max (lua_State *L) {
 */
 static int math_random (lua_State *L) {
   lua_Integer low, up;
+  int inclusive = 0;
   double r = (double)l_rand() * (1.0 / ((double)L_RANDMAX + 1.0));
   switch (lua_gettop(L)) {  /* check number of arguments */
     case 0: {  /* no arguments */
@@ -253,22 +254,27 @@ static int math_random (lua_State *L) {
       return 1;
     }
     case 1: {  /* only upper limit */
-      low = 1;
+      low = 0;
       up = luaL_checkinteger(L, 1);
       break;
     }
     case 2: {  /* lower and upper limits */
       low = luaL_checkinteger(L, 1);
       up = luaL_checkinteger(L, 2);
+      inclusive = 1;
       break;
     }
     default: return luaL_error(L, "wrong number of arguments");
   }
-  /* random integer in the interval [low, up] */
-  luaL_argcheck(L, low <= up, 1, "interval is empty");
+  /*
+  ** random integer in the interval [low, up]
+  ** base 0 mod: [low, up) for 1 arg case, [low, up] for 2 args case.
+  ** adjustment deferred because of possible integer overflow.
+  */
+  luaL_argcheck(L, low < up || (inclusive == 1 && low == up), 1, "interval is empty");
   luaL_argcheck(L, low >= 0 || up <= LUA_MAXINTEGER + low, 1,
                    "interval too large");
-  r *= (double)(up - low) + 1.0;
+  r *= (double)(up - low) + (inclusive == 1 ? 1.0 : 0.0);
   lua_pushinteger(L, (lua_Integer)r + low);
   return 1;
 }
