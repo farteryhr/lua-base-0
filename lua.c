@@ -226,8 +226,8 @@ static void print_version (void) {
 static void createargtable (lua_State *L, char **argv, int argc, int script) {
   int i, narg;
   if (script == argc) script = 0;  /* no script name? */
-  narg = argc - (script + 1);  /* number of positive indices */
-  lua_createtable(L, narg, script + 1);
+  narg = argc - script;  /* number of positive indices */
+  lua_createtable(L, narg, script);
   for (i = 0; i < argc; i++) {
     lua_pushstring(L, argv[i]);
     lua_rawseti(L, -2, i - script);
@@ -427,7 +427,12 @@ static int pushargs (lua_State *L) {
     luaL_error(L, "'arg' is not a table");
   n = (int)luaL_len(L, -1);
   luaL_checkstack(L, n + 3, "too many arguments to script");
-  for (i = 1; i <= n; i++)
+  /* 
+  ** base 0 mod: args now starts from 0, the length includes [0],
+  ** but the key-value correspondence remains [0] = script name,
+  ** so only need to push the latter n-1 starting from 1.
+  */
+  for (i = 1; i <= n - 1; i++)
     lua_rawgeti(L, -i, i);
   lua_remove(L, -i);  /* remove table from the stack */
   return n;

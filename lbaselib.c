@@ -261,7 +261,7 @@ static int luaB_ipairs (lua_State *L) {
   luaL_checkany(L, 1);
   lua_pushcfunction(L, ipairsaux);  /* iteration function */
   lua_pushvalue(L, 1);  /* state */
-  lua_pushinteger(L, 0);  /* initial value */
+  lua_pushinteger(L, -1);  /* initial value */
   return 3;
 #endif
 }
@@ -391,8 +391,8 @@ static int luaB_select (lua_State *L) {
   else {
     lua_Integer i = luaL_checkinteger(L, 1);
     if (i < 0) i = n + i;
-    else if (i > n) i = n;
-    luaL_argcheck(L, 1 <= i, 1, "index out of range");
+    else if (i >= n) i = n - 1;
+    luaL_argcheck(L, 0 <= i, 1, "index out of range");
     return n - (int)i;
   }
 }

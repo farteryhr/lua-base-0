@@ -77,7 +77,7 @@ static int maxn (lua_State *L) {
 
 
 static int tinsert (lua_State *L) {
-  lua_Integer e = aux_getn(L, 1, TAB_RW) + 1;  /* first empty element */
+  lua_Integer e = aux_getn(L, 1, TAB_RW);  /* first empty element */
   lua_Integer pos;  /* where to insert new element */
   switch (lua_gettop(L)) {
     case 2: {  /* called with only 2 arguments */
@@ -87,7 +87,7 @@ static int tinsert (lua_State *L) {
     case 3: {
       lua_Integer i;
       pos = luaL_checkinteger(L, 2);  /* 2nd argument is the position */
-      luaL_argcheck(L, 1 <= pos && pos <= e, 2, "position out of bounds");
+      luaL_argcheck(L, 0 <= pos && pos <= e, 2, "position out of bounds");
       for (i = e; i > pos; i--) {  /* move up elements */
         lua_geti(L, 1, i - 1);
         lua_seti(L, 1, i);  /* t[i] = t[i - 1] */
@@ -105,11 +105,13 @@ static int tinsert (lua_State *L) {
 
 static int tremove (lua_State *L) {
   lua_Integer size = aux_getn(L, 1, TAB_RW);
-  lua_Integer pos = luaL_optinteger(L, 2, size);
-  if (pos != size)  /* validate 'pos' if given */
-    luaL_argcheck(L, 1 <= pos && pos <= size + 1, 1, "position out of bounds");
+  lua_Integer pos = luaL_optinteger(L, 2, size - 1);
+  /* base 0 mod: be strict */
+  luaL_argcheck(L, size > 0, 1, "size of table is 0");
+  /* if (pos != size - 1) */  /* validate 'pos' if given */
+  luaL_argcheck(L, 0 <= pos && pos < size, 2, "position out of bounds");
   lua_geti(L, 1, pos);  /* result = t[pos] */
-  for ( ; pos < size; pos++) {
+  for ( ; pos < size - 1; pos++) {
     lua_geti(L, 1, pos + 1);
     lua_seti(L, 1, pos);  /* t[pos] = t[pos + 1] */
   }
@@ -124,6 +126,8 @@ static int tremove (lua_State *L) {
 ** possible, copy in increasing order, which is better for rehashing.
 ** "possible" means destination after original range, or smaller
 ** than origin, or copying to another table.
+** base 0 mod:
+** Copy elements (1[f], ..., 1[e - 1]) into (tt[t], tt[t+1], ...)
 */
 static int tmove (lua_State *L) {
   lua_Integer f = luaL_checkinteger(L, 2);
@@ -132,14 +136,14 @@ static int tmove (lua_State *L) {
   int tt = !lua_isnoneornil(L, 5) ? 5 : 1;  /* destination table */
   checktab(L, 1, TAB_R);
   checktab(L, tt, TAB_W);
-  if (e >= f) {  /* otherwise, nothing to move */
+  if (e > f) {  /* otherwise, nothing to move */
     lua_Integer n, i;
-    luaL_argcheck(L, f > 0 || e < LUA_MAXINTEGER + f, 3,
+    luaL_argcheck(L, f >= 0 || e <= LUA_MAXINTEGER + f, 3,
                   "too many elements to move");
-    n = e - f + 1;  /* number of elements to move */
+    n = e - f;  /* number of elements to move */
     luaL_argcheck(L, t <= LUA_MAXINTEGER - n + 1, 4,
                   "destination wrap around");
-    if (t > e || t <= f || (tt != 1 && !lua_compare(L, 1, tt, LUA_OPEQ))) {
+    if (t >= e || t <= f || (tt != 1 && !lua_compare(L, 1, tt, LUA_OPEQ))) {
       for (i = 0; i < n; i++) {
         lua_geti(L, 1, f + i);
         lua_seti(L, tt, t + i);
@@ -168,10 +172,10 @@ static void addfield (lua_State *L, luaL_Buffer *b, lua_Integer i) {
 
 static int tconcat (lua_State *L) {
   luaL_Buffer b;
-  lua_Integer last = aux_getn(L, 1, TAB_R);
+  lua_Integer last = aux_getn(L, 1, TAB_R) - 1;
   size_t lsep;
   const char *sep = luaL_optlstring(L, 2, "", &lsep);
-  lua_Integer i = luaL_optinteger(L, 3, 1);
+  lua_Integer i = luaL_optinteger(L, 3, 0);
   last = luaL_optinteger(L, 4, last);
   luaL_buffinit(L, &b);
   for (; i < last; i++) {
@@ -196,7 +200,7 @@ static int pack (lua_State *L) {
   int n = lua_gettop(L);  /* number of elements to pack */
   lua_createtable(L, n, 1);  /* create result table */
   lua_insert(L, 1);  /* put it at index 1 */
-  for (i = n; i >= 1; i--)  /* assign elements */
+  for (i = n - 1; i >= 0; i--)  /* assign elements */
     lua_seti(L, 1, i);
   lua_pushinteger(L, n);
   lua_setfield(L, 1, "n");  /* t.n = number of elements */
@@ -206,16 +210,16 @@ static int pack (lua_State *L) {
 
 static int unpack (lua_State *L) {
   lua_Unsigned n;
-  lua_Integer i = luaL_optinteger(L, 2, 1);
+  lua_Integer i = luaL_optinteger(L, 2, 0);
   lua_Integer e = luaL_opt(L, luaL_checkinteger, 3, luaL_len(L, 1));
-  if (i > e) return 0;  /* empty range */
-  n = (lua_Unsigned)e - i;  /* number of elements minus 1 (avoid overflows) */
-  if (n >= (unsigned int)INT_MAX  || !lua_checkstack(L, (int)(++n)))
+  if (i >= e) return 0;  /* empty range */
+  /* number of elements (no worries about overflow now?) */
+  n = (lua_Unsigned)e - i;
+  if (n > (unsigned int)INT_MAX  || !lua_checkstack(L, (int)n))
     return luaL_error(L, "too many results to unpack");
-  for (; i < e; i++) {  /* push arg[i..e - 1] (to avoid overflows) */
+  for (; i < e; i++) {  /* base 0 mod: push arg[i..e - 1] */
     lua_geti(L, 1, i);
   }
-  lua_geti(L, 1, e);  /* push last element */
   return (int)n;
 }
 
@@ -411,11 +415,12 @@ static void auxsort (lua_State *L, IdxT lo, IdxT up,
 static int sort (lua_State *L) {
   lua_Integer n = aux_getn(L, 1, TAB_RW);
   if (n > 1) {  /* non-trivial interval? */
-    luaL_argcheck(L, n < INT_MAX, 1, "array too big");
+    luaL_argcheck(L, n <= INT_MAX, 1, "array too big");
     if (!lua_isnoneornil(L, 2))  /* is there a 2nd argument? */
       luaL_checktype(L, 2, LUA_TFUNCTION);  /* must be a function */
     lua_settop(L, 2);  /* make sure there are two arguments */
-    auxsort(L, 1, (IdxT)n, 0);
+    auxsort(L, 0, (IdxT)n - 1, 0);
+    /* base 0 mod: inside auxsort, let it use closed interval */
   }
   return 0;
 }
