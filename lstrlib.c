@@ -63,7 +63,7 @@ static int str_len (lua_State *L) {
 static lua_Integer posrelat (lua_Integer pos, size_t len) {
   if (pos >= 0) return pos;
   else if (0u - (size_t)pos > len) return 0;
-  else return (lua_Integer)len + pos + 1;
+  else return (lua_Integer)len + pos;
 }
 
 
@@ -71,11 +71,11 @@ static int str_sub (lua_State *L) {
   size_t l;
   const char *s = luaL_checklstring(L, 1, &l);
   lua_Integer start = posrelat(luaL_checkinteger(L, 2), l);
-  lua_Integer end = posrelat(luaL_optinteger(L, 3, -1), l);
-  if (start < 1) start = 1;
+  lua_Integer end = posrelat(luaL_optinteger(L, 3, l), l);
+  if (start < 0) start = 0;
   if (end > (lua_Integer)l) end = l;
-  if (start <= end)
-    lua_pushlstring(L, s + start - 1, (size_t)(end - start) + 1);
+  if (start < end)
+    lua_pushlstring(L, s + start, (size_t)(end - start));
   else lua_pushliteral(L, "");
   return 1;
 }
@@ -148,18 +148,18 @@ static int str_rep (lua_State *L) {
 static int str_byte (lua_State *L) {
   size_t l;
   const char *s = luaL_checklstring(L, 1, &l);
-  lua_Integer posi = posrelat(luaL_optinteger(L, 2, 1), l);
-  lua_Integer pose = posrelat(luaL_optinteger(L, 3, posi), l);
+  lua_Integer posi = posrelat(luaL_optinteger(L, 2, 0), l);
+  lua_Integer pose = posrelat(luaL_optinteger(L, 3, posi + 1), l);
   int n, i;
-  if (posi < 1) posi = 1;
+  if (posi < 0) posi = 0;
   if (pose > (lua_Integer)l) pose = l;
-  if (posi > pose) return 0;  /* empty interval; return no values */
+  if (posi >= pose) return 0;  /* empty interval; return no values */
   if (pose - posi >= INT_MAX)  /* arithmetic overflow? */
     return luaL_error(L, "string slice too long");
-  n = (int)(pose -  posi) + 1;
+  n = (int)(pose - posi);
   luaL_checkstack(L, n, "string slice too long");
   for (i=0; i<n; i++)
-    lua_pushinteger(L, uchar(s[posi+i-1]));
+    lua_pushinteger(L, uchar(s[posi+i]));
   return n;
 }
 
@@ -559,7 +559,7 @@ static void push_onecapture (MatchState *ms, int i, const char *s,
     ptrdiff_t l = ms->capture[i].len;
     if (l == CAP_UNFINISHED) luaL_error(ms->L, "unfinished capture");
     if (l == CAP_POSITION)
-      lua_pushinteger(ms->L, (ms->capture[i].init - ms->src_init) + 1);
+      lua_pushinteger(ms->L, ms->capture[i].init - ms->src_init);
     else
       lua_pushlstring(ms->L, ms->capture[i].init, l);
   }
@@ -608,25 +608,25 @@ static int str_find_aux (lua_State *L, int find) {
   size_t ls, lp;
   const char *s = luaL_checklstring(L, 1, &ls);
   const char *p = luaL_checklstring(L, 2, &lp);
-  lua_Integer init = posrelat(luaL_optinteger(L, 3, 1), ls);
-  if (init < 1) init = 1;
-  else if (init > (lua_Integer)ls + 1) {  /* start after string's end? */
+  lua_Integer init = posrelat(luaL_optinteger(L, 3, 0), ls);
+  if (init < 0) init = 0;
+  else if (init > (lua_Integer)ls) {  /* start after string's end? */
     lua_pushnil(L);  /* cannot find anything */
     return 1;
   }
   /* explicit request or no special characters? */
   if (find && (lua_toboolean(L, 4) || nospecials(p, lp))) {
     /* do a plain search */
-    const char *s2 = lmemfind(s + init - 1, ls - (size_t)init + 1, p, lp);
+    const char *s2 = lmemfind(s + init, ls - (size_t)init, p, lp);
     if (s2) {
-      lua_pushinteger(L, (s2 - s) + 1);
+      lua_pushinteger(L, s2 - s);
       lua_pushinteger(L, (s2 - s) + lp);
       return 2;
     }
   }
   else {
     MatchState ms;
-    const char *s1 = s + init - 1;
+    const char *s1 = s + init;
     int anchor = (*p == '^');
     if (anchor) {
       p++; lp--;  /* skip anchor character */
@@ -637,7 +637,7 @@ static int str_find_aux (lua_State *L, int find) {
       reprepstate(&ms);
       if ((res=match(&ms, s1, p)) != NULL) {
         if (find) {
-          lua_pushinteger(L, (s1 - s) + 1);  /* start */
+          lua_pushinteger(L, s1 - s);  /* start */
           lua_pushinteger(L, res - s);   /* end */
           return push_captures(&ms, NULL, 0) + 2;
         }

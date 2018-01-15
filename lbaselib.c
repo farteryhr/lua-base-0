@@ -390,10 +390,10 @@ static int luaB_select (lua_State *L) {
   }
   else {
     lua_Integer i = luaL_checkinteger(L, 1);
-    if (i < 0) i = n + i;
+    if (i < 0) i = n - 1 + i;
     else if (i >= n) i = n - 1;
     luaL_argcheck(L, 0 <= i, 1, "index out of range");
-    return n - (int)i;
+    return n - (int)i - 1;
   }
 }
 
