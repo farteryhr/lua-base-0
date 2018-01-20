@@ -333,7 +333,7 @@ static void addtoclib (lua_State *L, const char *path, void *plib) {
   lua_pushlightuserdata(L, plib);
   lua_pushvalue(L, -1);
   lua_setfield(L, -3, path);  /* CLIBS[path] = plib */
-  lua_rawseti(L, -2, luaL_len(L, -2) + 1);  /* CLIBS[#CLIBS + 1] = plib */
+  lua_rawseti(L, -2, luaL_len(L, -2));  /* CLIBS[#CLIBS + 1] = plib */
   lua_pop(L, 1);  /* pop CLIBS table */
 }
 
@@ -344,7 +344,7 @@ static void addtoclib (lua_State *L, const char *path, void *plib) {
 */
 static int gctm (lua_State *L) {
   lua_Integer n = luaL_len(L, 1);
-  for (; n >= 1; n--) {  /* for each handle, in reverse order */
+  for (n--; n >= 0; n--) {  /* for each handle, in reverse order */
     lua_rawgeti(L, 1, n);  /* get handle CLIBS[n] */
     lsys_unloadlib(lua_touserdata(L, -1));
     lua_pop(L, 1);  /* pop handle */
@@ -574,7 +574,7 @@ static void findloader (lua_State *L, const char *name) {
   if (lua_getfield(L, lua_upvalueindex(1), "searchers") != LUA_TTABLE)
     luaL_error(L, "'package.searchers' must be a table");
   /*  iterate over available searchers to find a loader */
-  for (i = 1; ; i++) {
+  for (i = 0; ; i++) {
     if (lua_rawgeti(L, 3, i) == LUA_TNIL) {  /* no more searchers? */
       lua_pop(L, 1);  /* remove nil */
       luaL_pushresult(&msg);  /* create error message */
@@ -740,7 +740,7 @@ static void createsearcherstable (lua_State *L) {
   for (i=0; searchers[i] != NULL; i++) {
     lua_pushvalue(L, -2);  /* set 'package' as upvalue for all searchers */
     lua_pushcclosure(L, searchers[i], 1);
-    lua_rawseti(L, -2, i+1);
+    lua_rawseti(L, -2, i);
   }
 #if defined(LUA_COMPAT_LOADERS)
   lua_pushvalue(L, -1);  /* make a copy of 'searchers' table */

@@ -420,6 +420,8 @@ static void doREPL (lua_State *L) {
 
 /*
 ** Push on the stack the contents of table 'arg' from 1 to #arg
+** base 0 mod:
+** Push on the stack the contents of table 'arg' from 1 to #arg - 1
 */
 static int pushargs (lua_State *L) {
   int i, n;
@@ -435,7 +437,7 @@ static int pushargs (lua_State *L) {
   for (i = 1; i <= n - 1; i++)
     lua_rawgeti(L, -i, i);
   lua_remove(L, -i);  /* remove table from the stack */
-  return n;
+  return n - 1; /* base 0 mod: the real number of args */
 }
 
 
