@@ -1478,7 +1478,7 @@ static int str_unpack (lua_State *L) {
   const char *fmt = luaL_checkstring(L, 1);
   size_t ld;
   const char *data = luaL_checklstring(L, 2, &ld);
-  size_t pos = (size_t)posrelat(luaL_optinteger(L, 3, 1), ld) - 1;
+  size_t pos = (size_t)posrelat(luaL_optinteger(L, 3, 0), ld);
   int n = 0;  /* number of results */
   luaL_argcheck(L, pos <= ld, 3, "initial position out of string");
   initheader(L, &h);
@@ -1532,7 +1532,7 @@ static int str_unpack (lua_State *L) {
     }
     pos += size;
   }
-  lua_pushinteger(L, pos + 1);  /* next position */
+  lua_pushinteger(L, pos);  /* next position */
   return n + 1;
 }
 
