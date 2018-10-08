@@ -158,12 +158,12 @@ static const char *findlocal (lua_State *L, CallInfo *ci, int n,
     base = ci->func + 1;
   if (name == NULL) {  /* no 'standard' name? */
     StkId limit = (ci == L->ci) ? L->top : ci->next->func;
-    if (limit - base >= n && n > 0)  /* is 'n' inside 'ci' stack? */
+    if (limit - base > n && n >= 0)  /* is 'n' inside 'ci' stack? */
       name = "(*temporary)";  /* generic name for any valid slot */
     else
       return NULL;  /* no name */
   }
-  *pos = base + (n - 1);
+  *pos = base + n;
   return name;
 }
 
@@ -431,7 +431,7 @@ static int findsetreg (Proto *p, int lastpc, int reg) {
 static const char *getobjname (Proto *p, int lastpc, int reg,
                                const char **name) {
   int pc;
-  *name = luaF_getlocalname(p, reg + 1, lastpc);
+  *name = luaF_getlocalname(p, reg, lastpc);
   if (*name)  /* is a local? */
     return "local";
   /* else try symbolic execution */
@@ -451,7 +451,7 @@ static const char *getobjname (Proto *p, int lastpc, int reg,
         int k = GETARG_C(i);  /* key index */
         int t = GETARG_B(i);  /* table index */
         const char *vn = (op == OP_GETTABLE)  /* name of indexed variable */
-                         ? luaF_getlocalname(p, t + 1, pc)
+                         ? luaF_getlocalname(p, t, pc)
                          : upvalname(p, t);
         kname(p, pc, k, name);
         return (vn && strcmp(vn, LUA_ENV) == 0) ? "global" : "field";
